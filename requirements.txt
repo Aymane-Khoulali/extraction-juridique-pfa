@@ -1,0 +1,4 @@
+requests
+pytesseract
+pdf2image
+pillow

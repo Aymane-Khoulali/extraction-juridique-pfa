@@ -1,0 +1,19 @@
+# Environnements Python
+__pycache__/
+*.pyc
+venv/
+env/
+
+# Fichiers de config/secrets
+.env
+
+# Documents PDF potentiellement confidentiels
+data/samples/*.pdf
+data/ocr_output/*.txt
+
+# Fichiers système Mac
+.DS_Store
+
+# Modèles téléchargés
+*.gguf
+*.bin
