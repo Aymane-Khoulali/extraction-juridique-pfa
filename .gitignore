@@ -9,7 +9,7 @@ env/
 
 # Documents PDF potentiellement confidentiels
 data/samples/*.pdf
-data/ocr_output/*.txt
+#data/ocr_output/*.txt
 
 # Fichiers système Mac
 .DS_Store
