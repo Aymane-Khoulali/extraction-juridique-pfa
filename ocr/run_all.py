@@ -1,8 +1,8 @@
 """
 ocr/run_all.py
 
-Lance pdf_vers_texte() sur TOUS les PDF de data/samples/,
-et sauvegarde chaque resultat dans data/ocr_output/<nom>.txt
+Lance pdf_vers_texte() (Tesseract) sur TOUS les PDF de data/samples/,
+et sauvegarde chaque resultat dans data/ocr_output/tesseractOCR_output/<nom>_tesseract.txt
 """
 
 import os
@@ -10,7 +10,7 @@ import glob
 from extract_text import pdf_vers_texte
 
 DOSSIER_SAMPLES = "data/samples"
-DOSSIER_SORTIE = "data/ocr_output"
+DOSSIER_SORTIE = "data/ocr_output/tesseractOCR_output"
 
 
 def main():
