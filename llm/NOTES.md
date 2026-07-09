@@ -93,3 +93,43 @@ filet de secours pour les cas où aucune règle mécanique ne s'applique.
   la regex peut ne pas détecter le bon candidat du tout. Ce risque est plus
   élevé si un moteur OCR est nettement moins précis sur les chiffres que
   Tesseract ne l'a été sur notre corpus de test.
+
+## Comparaison entre moteurs OCR (Tesseract vs EasyOCR vs PaddleOCR)
+
+Pour évaluer si le script d'extraction reste fiable quel que soit le moteur
+OCR utilisé en amont (partie de Ghizlane), on génère un fichier de résultats
+par moteur OCR, en relançant `extraire_numero_dossier()` sur les mêmes 10
+documents de test, une fois pour chaque moteur.
+
+### Comment générer un fichier de résultats
+
+Exemple pour un moteur "X" (remplacer le chemin du dossier source) :
+
+```bash
+{
+  echo "# Résultats extraction numéro de dossier — OCR X"
+  echo ""
+  echo "| Document | Numéro de dossier extrait |"
+  echo "|---|---|"
+  for f in data/ocr_output/DOSSIER_DU_MOTEUR/*.txt; do
+    nom=$(basename "$f")
+    resultat=$(python3 llm/llm_extract.py "$f" | sed 's/Numéro de dossier : //')
+    echo "| $nom | $resultat |"
+  done
+} > llm/resultats/resultats_X.md
+```
+
+### Fichiers générés
+
+- `llm/resultats/resultats_tesseract.md` : 10/10 corrects
+- `llm/resultats/resultats_easyocr.md` : en cours d'analyse
+- `llm/resultats/resultats_paddleocr.md` : à venir (Ghizlane encore en train de le générer)
+
+### Ce qu'on cherche à observer
+
+Le principal risque identifié est que le script dépend de la bonne
+reconnaissance des CHIFFRES par l'OCR (la regex ne tolère aucune erreur sur
+les chiffres du numéro de dossier, contrairement au texte arabe environnant
+où le bruit OCR est toléré). Si un moteur OCR est moins précis que Tesseract
+sur les chiffres, le taux de réussite peut baisser même si le texte arabe
+global est mieux reconnu.
