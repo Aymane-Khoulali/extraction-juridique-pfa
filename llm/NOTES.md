@@ -7,9 +7,12 @@ brut d'une décision de justice marocaine en arabe, quel que soit le tribunal ou
 le type de document (jugement de 1ère instance, arrêt d'appel, arrêt de Cassation).
 
 ## Approche finale retenue
+
+Texte OCR → regex (détection de candidats plausibles) → premier candidat = réponse.
+
 Le LLM (Qwen2.5:7b via Ollama) n'est utilisé qu'en tout dernier recours, si la
-regex ne détecte aucun candidat. **Il n'est plus utilisé pour choisir entre
-plusieurs candidats** — voir la section "Pourquoi" ci-dessous.
+regex ne détecte aucun candidat. Il n'est plus utilisé pour choisir entre
+plusieurs candidats — voir la section "Pourquoi" ci-dessous.
 
 ## Règles de la regex
 
@@ -61,49 +64,24 @@ plusieurs candidats** — voir la section "Pourquoi" ci-dessous.
      Dans la version finale, ce risque est éliminé puisque le LLM n'est plus
      sollicité pour ce choix.
 
-## Pourquoi avoir abandonné le LLM pour ce choix précis ?
+## Résultats par moteur OCR
 
-Sur les cas testés (jugements, arrêts d'appel, arrêts de Cassation, avec et
-sans références à d'autres affaires), la règle déterministe "premier candidat
-valide" s'est vérifiée vraie à 100% une fois les faux positifs (dates, lois)
-filtrés. Le LLM (Qwen2.5:7b), même avec un prompt détaillé et un exemple
-few-shot explicite, se laissait parfois distraire par un numéro plus loin
-dans le texte quand celui-ci était mieux reconnu par l'OCR (donc plus "clair"
-sémantiquement) que le numéro réel de l'en-tête.
+Le script `extraire_numero_dossier()` a été testé sur les mêmes 10 documents,
+avec le texte OCR produit par différents moteurs (partie de Ghizlane) :
 
-**Conclusion retenue pour le rapport** : pour une tâche avec une règle
-positionnelle simple et vérifiable, une approche déterministe (regex + règles)
-est plus fiable qu'un LLM, même bien prompté. Le LLM garde son utilité comme
-filet de secours pour les cas où aucune règle mécanique ne s'applique.
+- **Tesseract** : 10/10 numéros de dossier corrects.
+- **EasyOCR** : 10/10 numéros de dossier corrects.
+- **PaddleOCR** : à venir.
 
-## Résultats
+Fait notable : sur le document 4, le texte brut produit par Tesseract et celui
+produit par EasyOCR différaient (erreur de lecture OCR différente selon le
+moteur sur ce document précis), mais dans les deux cas le script a quand même
+réussi à extraire le bon numéro de dossier. Cela suggère que la règle
+"premier candidat valide" reste robuste même face à des variations de qualité
+OCR d'un moteur à l'autre, tant que les chiffres du numéro de dossier lui-même
+restent lisibles.
 
-- 10/10 documents corrects (texte OCR Tesseract), incluant les 5 cas pièges
-  décrits ci-dessus.
-- Comparaison en cours avec PaddleOCR et EasyOCR (partie OCR, Ghizlane) pour
-  vérifier la robustesse de la regex face à des erreurs de reconnaissance de
-  chiffres différentes selon le moteur OCR utilisé.
-
-## Limites connues / points de vigilance pour la suite
-
-- La règle "premier candidat = le bon" a été validée empiriquement sur les
-  documents testés, mais n'est pas garantie à 100% sur tout type de document
-  marocain (à surveiller si de nouveaux formats apparaissent en Phase 3).
-- Si l'OCR se trompe sur un CHIFFRE (pas juste sur le texte arabe autour),
-  la regex peut ne pas détecter le bon candidat du tout. Ce risque est plus
-  élevé si un moteur OCR est nettement moins précis sur les chiffres que
-  Tesseract ne l'a été sur notre corpus de test.
-
-## Comparaison entre moteurs OCR (Tesseract vs EasyOCR vs PaddleOCR)
-
-Pour évaluer si le script d'extraction reste fiable quel que soit le moteur
-OCR utilisé en amont (partie de Ghizlane), on génère un fichier de résultats
-par moteur OCR, en relançant `extraire_numero_dossier()` sur les mêmes 10
-documents de test, une fois pour chaque moteur.
-
-### Comment générer un fichier de résultats
-
-Exemple pour un moteur "X" (remplacer le chemin du dossier source) :
+### Comment régénérer un fichier de résultats pour un nouveau moteur OCR
 
 ```bash
 {
@@ -119,17 +97,15 @@ Exemple pour un moteur "X" (remplacer le chemin du dossier source) :
 } > llm/resultats/resultats_X.md
 ```
 
-### Fichiers générés
+Fichiers déjà générés : `llm/resultats/resultats_tesseract.md`,
+`llm/resultats/resultats_easyocr.md`. À venir : `resultats_paddleocr.md`.
 
-- `llm/resultats/resultats_tesseract.md` : 10/10 corrects
-- `llm/resultats/resultats_easyocr.md` : en cours d'analyse
-- `llm/resultats/resultats_paddleocr.md` : à venir (Ghizlane encore en train de le générer)
+## Limites connues / points de vigilance pour la suite
 
-### Ce qu'on cherche à observer
-
-Le principal risque identifié est que le script dépend de la bonne
-reconnaissance des CHIFFRES par l'OCR (la regex ne tolère aucune erreur sur
-les chiffres du numéro de dossier, contrairement au texte arabe environnant
-où le bruit OCR est toléré). Si un moteur OCR est moins précis que Tesseract
-sur les chiffres, le taux de réussite peut baisser même si le texte arabe
-global est mieux reconnu.
+- La règle "premier candidat = le bon" a été validée empiriquement sur les
+  documents testés, mais n'est pas garantie à 100% sur tout type de document
+  marocain (à surveiller si de nouveaux formats apparaissent en Phase 3).
+- Si l'OCR se trompe sur un CHIFFRE (pas juste sur le texte arabe autour),
+  la regex peut ne pas détecter le bon candidat du tout. Ce risque est plus
+  élevé si un moteur OCR est nettement moins précis sur les chiffres que
+  Tesseract et EasyOCR ne l'ont été sur notre corpus de test.
