@@ -109,3 +109,54 @@ Fichiers déjà générés : `llm/resultats/resultats_tesseract.md`,
   la regex peut ne pas détecter le bon candidat du tout. Ce risque est plus
   élevé si un moteur OCR est nettement moins précis sur les chiffres que
   Tesseract et EasyOCR ne l'ont été sur notre corpus de test.
+
+### Résultat observé (Tesseract vs EasyOCR)
+
+- **Tesseract** : 10/10 numéros de dossier corrects.
+- **EasyOCR** : 10/10 numéros de dossier corrects également.
+- Fait notable : sur le document 4, le texte brut produit par Tesseract et
+  celui produit par EasyOCR différaient (erreur de lecture OCR différente
+  selon le moteur sur ce document précis), mais dans les deux cas le script
+  a quand même réussi à extraire le bon numéro de dossier. Cela suggère que
+  la règle "premier candidat valide" reste robuste même face à des
+  variations de qualité OCR d'un moteur à l'autre, tant que les chiffres du
+  numéro de dossier lui-même restent lisibles.
+
+## Extraction الهيئة (bench) et المنطوق (dispositif) - Phase 3
+
+### Approche
+
+Comme pour le numéro de dossier, on isole d'abord une fenêtre de texte pertinente
+en Python (recherche d'ancres textuelles comme "الهيئة الحاكمة" ou "مؤلفة من
+السادة") avant de la donner au LLM, plutôt que de donner tout le document. Ça
+évite que le LLM confonde les juges du panel avec d'autres noms cités ailleurs
+(avocats, parties, juges d'affaires antérieures).
+
+### Découvertes importantes
+
+- La position de la composition du collège varie selon le type de juridiction :
+  en en-tête pour un tribunal/cour d'appel, en FIN de document pour un arrêt de
+  Cassation (après le dispositif final).
+- Un panel de Cassation "بغرفتين" (deux chambres réunies) peut compter 6+ juges
+  assesseurs, contre 1-2 pour un tribunal normal. Le schéma d'extraction utilise
+  donc une liste de taille variable (`assesseurs: []`), pas des champs fixes.
+- Le greffier n'est pas toujours annoncé par le mot-clé exact "كاتب الضبط" - il
+  peut être introduit simplement par "بمساعدة" (assisté de), qu'il faut aussi
+  détecter.
+
+### Limite connue : noms fusionnés par perte de ponctuation OCR
+
+Quand la liste des juges est dense (formation à 6+ membres), l'OCR (EasyOCR
+testé ici) perd parfois la ponctuation de séparation entre deux noms consécutifs
+(tiret ou virgule manquant). Le LLM reçoit alors deux noms accolés sans aucun
+séparateur visible et ne peut pas deviner où couper - ce n'est pas récupérable
+par prompt engineering, c'est une perte d'information en amont (qualité OCR).
+
+### Limite connue : correction orthographique partielle
+
+Sur des mots très abîmés par l'OCR (ex: "بمسا اعدة" au lieu de "بمساعدة", "ىيدة"
+au lieu de "السيدة"), le LLM (Qwen2.5:7b) parvient à repérer correctement le bon
+passage et la bonne personne, mais ne corrige pas toujours l'orthographe du nom
+lui-même dans sa sortie. La localisation de l'information prime sur la
+correction esthétique du texte, qui reste imparfaite avec un modèle de cette
+taille sur du bruit OCR sévère.
