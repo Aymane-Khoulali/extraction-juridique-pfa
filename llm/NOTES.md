@@ -160,3 +160,34 @@ passage et la bonne personne, mais ne corrige pas toujours l'orthographe du nom
 lui-même dans sa sortie. La localisation de l'information prime sur la
 correction esthétique du texte, qui reste imparfaite avec un modèle de cette
 taille sur du bruit OCR sévère.
+
+## Bilan final Phase 3 (الهيئة + المنطوق) - EasyOCR
+
+Après plusieurs itérations de correction (ancres multiples pour الهيئة selon
+le type de juridiction, distinction label-de-rôle vs vrai nom avec garde-fou
+Python, verbes de décision spécifiques pour éviter la confusion avec la
+demande d'une partie, instruction "ne rien omettre" pour éviter que le LLM
+ne saute le verbe de décision + nom du tribunal en croyant "nettoyer" une
+clause procédurale) :
+
+- **رقم الملف** : fiable à 100% (règle déterministe).
+- **الهيئة** : extraction correcte sur tous les documents testés ; les champs
+  vides correspondent à une absence réelle de l'information dans le texte
+  source (ex: extraits de recueils de jurisprudence qui omettent parfois
+  cette section), pas à des erreurs d'extraction.
+- **المنطوق** : le bon passage est systématiquement repéré et complet (plus
+  de troncature ni d'omission du verbe de décision). Reste une limite
+  mineure : quelques fautes d'orthographe résiduelles sur des mots très
+  abîmés par l'OCR, qui ne remettent pas en cause le sens ni la complétude
+  du dispositif extrait.
+
+Difficultés clés résolues durant cette phase :
+1. Confusion entre "لهذه الأسباب" introduisant la demande d'une partie et
+   celui introduisant la vraie décision du tribunal -> recherche de verbes
+   de décision spécifiques au tribunal (حكمت/قضت/تصرح/قررت + nom de la cour).
+2. Le LLM recopiait parfois le label de rôle (ex: "رئيسا ومقررا") comme si
+   c'était le nom de la personne, quand le nom était sur la ligne suivante ->
+   garde-fou Python qui détecte et vide ces faux positifs après l'appel LLM.
+3. Instruction trop nuancée sur "ignorer la clause procédurale" a conduit le
+   LLM à sauter le verbe de décision et le nom du tribunal par excès de zèle
+   -> remplacée par une instruction stricte "tout garder, rien omettre".
