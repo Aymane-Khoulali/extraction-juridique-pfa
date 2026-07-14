@@ -8,7 +8,7 @@ env/
 .env
 
 # Documents PDF potentiellement confidentiels
-data/samples/*.pdf
+#data/samples/*.pdf
 #data/ocr_output/*.txt
 
 # Fichiers système Mac
