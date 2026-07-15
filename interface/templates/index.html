@@ -1,0 +1,62 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+<head>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta http-equiv="Content-Style-Type" content="text/css">
+  <title></title>
+  <meta name="Generator" content="Cocoa HTML Writer">
+  <meta name="CocoaVersion" content="2685.6">
+  <style type="text/css">
+    p.p1 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px Helvetica}
+    p.p2 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px Helvetica; min-height: 14.0px}
+  </style>
+</head>
+<body>
+<p class="p1">{% extends "base.html" %}</p>
+<p class="p1">{% block titre %}Analyser un document{% endblock %}</p>
+<p class="p1">{% block contenu %}</p>
+<p class="p1">&lt;div class="card"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;h2 style="margin-top:0;color:var(--navy);font-size:19px;"&gt;Analyser une décision judiciaire&lt;/h2&gt;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;p style="color:var(--muted);font-size:14px;line-height:1.6;"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>Sélectionnez un document PDF (décision de justice scannée, en arabe).</p>
+<p class="p1"><span class="Apple-converted-space">    </span>Le système extrait automatiquement le numéro de dossier, la composition</p>
+<p class="p1"><span class="Apple-converted-space">    </span>du collège de juges et le dispositif final.</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;/p&gt;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;form action="/analyser" method="post" enctype="multipart/form-data" id="form-upload"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;label for="pdf" style="</p>
+<p class="p1"><span class="Apple-converted-space">      </span>display:flex; flex-direction:column; align-items:center; justify-content:center;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>border:2px dashed var(--border); border-radius:10px; padding:40px 20px;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>cursor:pointer; margin:20px 0; background:#FAFAF7; transition:border-color .15s;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>" onmouseover="this.style.borderColor='var(--blue)'" onmouseout="this.style.borderColor='var(--border)'"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;span style="font-size:32px;"&gt;📄&lt;/span&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;span id="label-fichier" style="margin-top:10px;color:var(--text);font-size:14px;"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">        </span>Cliquez pour choisir un fichier PDF</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;/span&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>&lt;input type="file" id="pdf" name="pdf" accept="application/pdf" style="display:none;"</p>
+<p class="p1"><span class="Apple-converted-space">        </span>onchange="document.getElementById('label-fichier').textContent = this.files[0] ? this.files[0].name : 'Cliquez pour choisir un fichier PDF'"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;/label&gt;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;button type="submit" id="btn-submit" style="</p>
+<p class="p1"><span class="Apple-converted-space">      </span>width:100%; padding:14px; background:var(--navy); color:#fff; border:none;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>border-radius:8px; font-size:15px; font-weight:600; cursor:pointer;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">      </span>Analyser le document</p>
+<p class="p1"><span class="Apple-converted-space">    </span>&lt;/button&gt;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;/form&gt;</p>
+<p class="p2"><br></p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;div id="chargement" style="display:none; margin-top:20px; text-align:center; color:var(--muted); font-size:14px;"&gt;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>⏳ Traitement en cours (OCR puis extraction LLM)... cela peut prendre 1 à 2 minutes.</p>
+<p class="p1"><span class="Apple-converted-space">  </span>&lt;/div&gt;</p>
+<p class="p1">&lt;/div&gt;</p>
+<p class="p2"><br></p>
+<p class="p1">&lt;script&gt;</p>
+<p class="p1"><span class="Apple-converted-space">  </span>document.getElementById('form-upload').addEventListener('submit', function() {</p>
+<p class="p1"><span class="Apple-converted-space">    </span>document.getElementById('btn-submit').disabled = true;</p>
+<p class="p1"><span class="Apple-converted-space">    </span>document.getElementById('btn-submit').textContent = 'Traitement en cours...';</p>
+<p class="p1"><span class="Apple-converted-space">    </span>document.getElementById('chargement').style.display = 'block';</p>
+<p class="p1"><span class="Apple-converted-space">  </span>});</p>
+<p class="p1">&lt;/script&gt;</p>
+<p class="p1">{% endblock %}</p>
+</body>
+</html>
