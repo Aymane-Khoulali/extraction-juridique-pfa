@@ -191,3 +191,59 @@ Difficultés clés résolues durant cette phase :
 3. Instruction trop nuancée sur "ignorer la clause procédurale" a conduit le
    LLM à sauter le verbe de décision et le nom du tribunal par excès de zèle
    -> remplacée par une instruction stricte "tout garder, rien omettre".
+
+## Module complémentaire : correction orthographique du texte complet (corriger_texte.py)
+
+En complément des 4 champs extraits (numéro de dossier, tribunal, هيئة,
+منطوق), un module séparé a été développé pour corriger l'orthographe de
+l'ensemble d'un texte OCR, utile pour une relecture humaine du document
+complet plutôt que des champs isolés.
+
+### Approche
+
+Le texte est découpé en morceaux (~2500 caractères, coupés aux sauts de
+ligne/espaces pour ne pas trancher un mot), chaque morceau étant corrigé
+séparément par le LLM avant réassemblage.
+
+### Problème identifié lors des premiers tests
+
+Sur du texte fortement abîmé par l'OCR, le modèle ne se contentait pas de
+corriger les fautes : il **inventait** parfois du contenu plausible mais faux
+pour "faire fonctionner" la phrase. Trois cas concrets observés :
+1. Une référence vague ("à la date mentionnée ci-dessus") remplacée par une
+   date précise mais fausse, recopiée d'un tout autre contexte du document.
+2. Un mot arabe inventé (qui n'existe pas dans la langue) créé pour combler
+   un artefact de tampon au lieu de simplement le retirer.
+3. Deux noms d'institutions réelles et distinctes fusionnées en une entité
+   fictive qui n'existe pas.
+
+### Corrections apportées
+
+1. **Prompt renforcé** avec 5 règles strictes, chacune illustrée par un
+   contre-exemple réel tiré des échecs observés (plus efficace qu'une règle
+   abstraite, comme constaté sur d'autres parties du projet).
+2. **Garde-fou automatique** : toute séquence numérique (3 chiffres ou plus)
+   apparaissant dans le texte corrigé mais absente de l'intégralité du
+   document original est détectée ; le morceau concerné est alors rejeté et
+   la version originale (non corrigée) est conservée à la place.
+
+### Résultat après correction
+
+Sur le même document de test, le garde-fou a détecté et neutralisé le
+problème de date inventée : le morceau concerné a été automatiquement rejeté
+et remplacé par sa version d'origine, ce qui a éliminé par la même occasion
+la fusion d'institutions fictive (présente dans le même morceau).
+
+Le mot arabe inventé (cas n°2), présent dans un autre morceau sans nombre
+suspect, n'a en revanche pas été intercepté : aucun garde-fou mécanique
+équivalent n'existe pour détecter un mot inventé isolé (contrairement à un
+nombre absent du document, un mot arabe fabriqué n'est pas trivialement
+détectable sans un dictionnaire de référence).
+
+### Limite connue
+
+Ce module reste donc utile pour une relecture rapide et pour corriger le
+bruit OCR léger à modéré, mais ne doit pas être considéré comme une source
+de vérité fiable à 100% sur des passages très abîmés, en particulier pour
+les noms propres, institutions et références numériques - une vérification
+humaine reste recommandée sur les passages sensibles.
