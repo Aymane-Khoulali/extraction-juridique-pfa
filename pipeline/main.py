@@ -18,6 +18,7 @@ from llm_extract import (
     extraire_tribunal,
     extraire_haia,
     extraire_mantouk,
+    extraire_indemnisation,
 )
 
 
@@ -30,6 +31,7 @@ def traiter_document(chemin_pdf: str) -> dict:
     tribunal = extraire_tribunal(texte)
     haia = extraire_haia(texte)
     mantouk = extraire_mantouk(texte)
+    indemnisation = extraire_indemnisation(texte)
 
     return {
         "fichier": os.path.basename(chemin_pdf),
@@ -37,6 +39,7 @@ def traiter_document(chemin_pdf: str) -> dict:
         "tribunal": tribunal,
         "haia": haia,
         "mantouk": mantouk,
+        "indemnisation": indemnisation,
     }
 
 
@@ -51,20 +54,25 @@ if __name__ == "__main__":
     print("\n" + "=" * 60)
     print("  RESULTAT DE L'EXTRACTION")
     print("=" * 60)
-    print(f"\nرقم الملف (numero de dossier) : {resultat['numero_dossier']}")
-    print(f"المحكمة (tribunal)            : {resultat['tribunal']}")
+    print(f"\nرقم الملف : {resultat['numero_dossier']}")
+    print(f"المحكمة : {resultat['tribunal']}")
 
-    print(f"\nالهيئة (college de juges)")
-    print(f"   - رئيسا ومقررا (president) : {resultat['haia'].get('president_rapporteur', '') or '-'}")
+    print(f"\nالهيئة")
+    print(f"   - رئيسا ومقررا : {resultat['haia'].get('president_rapporteur', '') or '-'}")
     assesseurs = resultat['haia'].get("assesseurs", [])
     if assesseurs:
         for i, nom in enumerate(assesseurs, 1):
-            print(f"   - عضو {i} (assesseur)      : {nom}")
+            print(f"   - عضو {i} : {nom}")
     else:
-        print(f"   - عضو (assesseur)         : -")
-    print(f"   - كاتب الضبط (greffier)    : {resultat['haia'].get('greffier', '') or '-'}")
-    print(f"   - المحامي العام (procureur) : {resultat['haia'].get('procureur', '') or '-'}")
+        print(f"   - عضو : -")
+    print(f"   - كاتب الضبط : {resultat['haia'].get('greffier', '') or '-'}")
+    print(f"   - المحامي العام : {resultat['haia'].get('procureur', '') or '-'}")
 
-    print(f"\nقرار المحكمة النهائي (dispositif final)")
+    print(f"\nقرار المحكمة النهائي")
     print(f"   {resultat['mantouk']}")
+
+    print(f"\nالتعويض")
+    print(f"   - المبلغ المطلوب : {resultat['indemnisation'].get('montant_reclame', '-')}")
+    print(f"   - المبلغ الممنوح : {resultat['indemnisation'].get('montant_accorde', '-')}")
+    print(f"   - الوضعية : {resultat['indemnisation'].get('statut', '-')}")
     print("\n" + "=" * 60 + "\n")
