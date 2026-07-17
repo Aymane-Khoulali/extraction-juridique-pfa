@@ -504,14 +504,34 @@ def isoler_section_faits(texte: str) -> str:
     return texte
 
 
+def isoler_zone_reclamation(texte: str) -> str:
+    """Retourne la zone de texte a utiliser pour compter les montants
+    reclames. De preference, on se limite a la reformulation de la demande
+    situee juste apres 'وبعد المداولة طبقا للقانون' (juste avant le
+    raisonnement du tribunal sur la competence/recevabilite) : c'est la
+    liste la plus fiable et la plus complete, contrairement a la premiere
+    liste dans les faits qui peut se faire couper par les fenetres de texte.
+
+    On cherche la DERNIERE occurrence de 'المداولة' avant le dispositif
+    final, car la PREMIERE occurrence correspond generalement a une phrase
+    differente plus tot dans le texte ('ووضع القضية في المداولة' lors de
+    l'audience), pas a la reformulation de la demande qu'on veut cibler."""
+    section_faits = isoler_section_faits(texte)
+    idx = section_faits.rfind("المداولة")
+    if idx != -1:
+        return section_faits[idx:]
+    return section_faits
+
+
 def trouver_montants_individuels(texte: str):
-    """Trouve TOUS les montants suivis de 'درهم' dans la section des faits.
+    """Trouve TOUS les montants suivis de 'درهم' dans la zone de reclamation
+    (de preference apres 'وبعد المداولة', voir isoler_zone_reclamation).
 
     Le regex capture toute la sequence de chiffres/points/virgules qui
     precede 'درهم', sans limite de taille sur le premier groupe (sinon un
     montant sans separateur de milliers, ex: '5500 درهم', est tronque)."""
 
-    section_faits = isoler_section_faits(texte)
+    section_faits = isoler_zone_reclamation(texte)
 
     motif = r"([\d]+(?:[.,][\d]+)*)\s*درهم"
     montants = []
