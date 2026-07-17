@@ -533,7 +533,11 @@ def trouver_montants_individuels(texte: str):
 
     section_faits = isoler_zone_reclamation(texte)
 
-    motif = r"([\d]+(?:[.,][\d]+)*)\s*درهم"
+    # "درهم" (dirham) est parfois mal reconnu par l'OCR - ex: "درمم" au lieu
+    # de "درهم" (le "ه" confondu avec un "م"). On tolere cette variation en
+    # acceptant 1 ou 2 caracteres parmi [هم] apres "در", plutot que d'exiger
+    # une correspondance exacte du mot complet.
+    motif = r"([\d]+(?:[.,][\d]+)*)\s*در[هم]{1,2}"
     montants = []
 
     for match in re.finditer(motif, section_faits):
