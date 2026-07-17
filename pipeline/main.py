@@ -72,7 +72,8 @@ if __name__ == "__main__":
     print(f"   {resultat['mantouk']}")
 
     print(f"\nالتعويض")
-    print(f"   - المبلغ المطلوب : {resultat['indemnisation'].get('montant_reclame', '-')}")
+    print(f"   - المبالغ الفردية المكتشفة : {', '.join(resultat['indemnisation'].get('detail_montants_individuels', [])) or '-'}")
+    print(f"   - المبلغ المطلوب (مجموع محسوب) : {resultat['indemnisation'].get('montant_reclame', '-')}")
     print(f"   - المبلغ الممنوح : {resultat['indemnisation'].get('montant_accorde', '-')}")
     print(f"   - الوضعية : {resultat['indemnisation'].get('statut', '-')}")
     print("\n" + "=" * 60 + "\n")
