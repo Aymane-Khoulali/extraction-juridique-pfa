@@ -28,7 +28,7 @@ def traiter_document(chemin_pdf: str) -> dict:
 
     print("[2/2] Extraction LLM...")
     numero = extraire_numero_dossier(texte)
-    tribunal = extraire_tribunal(texte)
+    tribunaux = extraire_tribunal(texte)
     haia = extraire_haia(texte)
     mantouk = extraire_mantouk(texte)
     indemnisation = extraire_indemnisation(texte)
@@ -36,7 +36,7 @@ def traiter_document(chemin_pdf: str) -> dict:
     return {
         "fichier": os.path.basename(chemin_pdf),
         "numero_dossier": numero,
-        "tribunal": tribunal,
+        "tribunaux": tribunaux,
         "haia": haia,
         "mantouk": mantouk,
         "indemnisation": indemnisation,
@@ -55,10 +55,11 @@ if __name__ == "__main__":
     print("  RESULTAT DE L'EXTRACTION")
     print("=" * 60)
     print(f"\nرقم الملف : {resultat['numero_dossier']}")
-    print(f"المحكمة : {resultat['tribunal']}")
+    print(f"المحكمة (المحاكم المذكورة) : {' / '.join(resultat['tribunaux'])}")
 
     print(f"\nالهيئة")
-    print(f"   - رئيسا ومقررا : {resultat['haia'].get('president_rapporteur', '') or '-'}")
+    print(f"   - رئيسا : {resultat['haia'].get('president', '') or '-'}")
+    print(f"   - مقررا : {resultat['haia'].get('rapporteur', '') or '-'}")
     assesseurs = resultat['haia'].get("assesseurs", [])
     if assesseurs:
         for i, nom in enumerate(assesseurs, 1):

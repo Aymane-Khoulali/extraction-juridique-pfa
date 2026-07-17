@@ -1,6 +1,7 @@
 """
-Module d'extraction : numéro de dossier + tribunal + الهيئة (bench) +
-المنطوق (dispositif final) + indemnisation (montant réclamé calculé vs accordé)
+Module d'extraction : numéro de dossier + tribunal(aux) + الهيئة (bench,
+avec رئيس/مقرر distincts) + المنطوق (dispositif final) + indemnisation
+(montant réclamé calculé vs montant accordé, avec indice regex)
 """
 
 import sys
@@ -84,24 +85,33 @@ def extraire_numero_dossier(texte: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# PARTIE 2 : Nom du tribunal - en-tête d'abord, puis texte complet en repli
+# PARTIE 2 : Nom(s) du tribunal - un document peut en citer plusieurs
+# (ex: en-tete generique montrant plusieurs juridictions regionales) ; on
+# les liste TOUS plutot que d'en choisir un seul arbitrairement.
 # ---------------------------------------------------------------------------
 
-TAILLE_FENETRE_TRIBUNAL = 600
+TAILLE_FENETRE_TRIBUNAL = 700
 
 
 def isoler_zone_tribunal(texte: str) -> str:
     return texte[:TAILLE_FENETRE_TRIBUNAL]
 
 
-def _demander_tribunal(contenu_texte: str) -> str:
+def _demander_tribunaux(contenu_texte: str) -> list:
     prompt = f"""You are an expert assistant for Moroccan judicial documents written in Arabic.
 
 The text below is (an excerpt of) a Moroccan court decision. It may contain OCR
 errors - mentally correct obvious spelling mistakes before extracting.
 
-Extract the FULL NAME of the court/tribunal that issued this decision (اسم
-المحكمة), including its city if mentioned. Common formats include:
+Extract EVERY DISTINCT court/tribunal name mentioned (اسم المحكمة), including
+city if mentioned. A single document sometimes mentions MORE THAN ONE court -
+for example a generic letterhead/stamp listing several regional jurisdictions,
+or a first-instance court alongside an appeal court. DO NOT pick just one -
+list ALL distinct court names you find, each in its clean, complete, correct
+form (correcting OCR corruption, e.g. "الاستئنانف" -> "الاستئناف", "الفادرة"
+-> "الإدارية").
+
+Common formats include:
 - "المحكمة التجارية ب<ville>" (Commercial Court of <city>)
 - "المحكمة الابتدائية ب<ville>" (Court of First Instance of <city>)
 - "المحكمة الإدارية ب<ville>" (Administrative Court of <city>)
@@ -109,22 +119,8 @@ Extract the FULL NAME of the court/tribunal that issued this decision (اسم
 - "محكمة الاستئناف الإدارية ب<ville>" (Administrative Court of Appeal of <city>)
 - "محكمة النقض" (Court of Cassation - no city, it is the supreme court)
 
-IMPORTANT: this text is OCR output and often contains letter-level corruption
-(e.g. "الاستئنانف" instead of "الاستئناف", "الفادرة" instead of "الإدارية").
-Correct these into the standard, grammatically correct court name - do not
-reproduce OCR corruption in your answer.
-
-Note: a document can mention MULTIPLE courts (e.g. the court that originally
-handled a related file, versus the court actually issuing THIS decision).
-The court issuing THIS decision is the one associated with the judges panel
-(الهيئة) and the final ruling (المنطوق) - prefer that one if there is any
-ambiguity between two different court names in the text.
-
-The court name may appear anywhere in the text - in the header (often repeated
-in a box/table), or later in the body. Search the WHOLE text if needed.
-Extract it once, in its clean, complete, correct form. Do not include the
-case number, decision number, or date - only the court's name.
-If truly not found anywhere, return an empty string.
+Do not include the case number, decision number, or date - only court names.
+If truly nothing is found, return an empty list.
 
 Text:
 \"\"\"
@@ -132,7 +128,7 @@ Text:
 \"\"\"
 
 Respond ONLY with this JSON:
-{{"tribunal": "..."}}
+{{"tribunaux": ["...", "..."]}}
 """
     try:
         reponse = requests.post(
@@ -149,21 +145,31 @@ Respond ONLY with this JSON:
         reponse.raise_for_status()
         contenu = reponse.json()["response"]
         resultat = json.loads(contenu)
-        return resultat.get("tribunal", "")
+        tribunaux = resultat.get("tribunaux", [])
+        vus = set()
+        propre = []
+        for t in tribunaux:
+            t = (t or "").strip()
+            if t and t not in vus:
+                vus.add(t)
+                propre.append(t)
+        return propre
     except Exception:
-        return ""
+        return []
 
 
-def extraire_tribunal(texte: str) -> str:
-    resultat = _demander_tribunal(isoler_zone_tribunal(texte))
-    if resultat and resultat.strip():
+def extraire_tribunal(texte: str) -> list:
+    """Retourne la LISTE de tous les tribunaux distincts trouves (en-tete
+    d'abord, texte complet en repli si l'en-tete n'en donne aucun)."""
+    resultat = _demander_tribunaux(isoler_zone_tribunal(texte))
+    if resultat:
         return resultat
-    resultat = _demander_tribunal(texte[:4000])
-    return resultat if resultat and resultat.strip() else "NON TROUVE"
+    resultat = _demander_tribunaux(texte[:4000])
+    return resultat if resultat else ["NON TROUVE"]
 
 
 # ---------------------------------------------------------------------------
-# PARTIE 3 : الهيئة (bench) - fenêtre isolée + liste flexible de membres
+# PARTIE 3 : الهيئة (bench) - رئيس et مقرر distingues, fenetre isolee
 # ---------------------------------------------------------------------------
 
 ANCRES_HAIA = [
@@ -183,6 +189,7 @@ MOTS_ROLES = [
     "رئيسا ومقررا",
     "رئيسا",
     "ومقررا",
+    "مقررا",
     "عضوا",
     "أعضاء",
     "مستشارا",
@@ -239,7 +246,7 @@ def ressemble_a_un_role_pas_un_nom(valeur: str) -> bool:
 
 
 def nettoyer_champs_haia(haia: dict) -> dict:
-    for champ in ("president_rapporteur", "greffier", "procureur"):
+    for champ in ("president", "rapporteur", "greffier", "procureur"):
         valeur = haia.get(champ, "")
         if ressemble_a_un_role_pas_un_nom(valeur):
             haia[champ] = ""
@@ -282,6 +289,19 @@ sits exactly where a role label is grammatically expected (right after the
 first name in a judges list, before "عضوا" for others), treat it as a
 corrupted ROLE LABEL, not as part of the name.
 
+CRITICAL - president (رئيس) vs rapporteur (مقرر) are TWO DIFFERENT ROLES that
+can be held by the SAME person or by TWO DIFFERENT people:
+- If the text says "رئيسا ومقررا" attached to ONE single name, that ONE
+  person holds BOTH roles - put their name in BOTH "president" AND
+  "rapporteur".
+- If the text separately marks one name with "رئيسا" and a DIFFERENT name
+  elsewhere with "مقررا", these are TWO DIFFERENT people - put each name in
+  its own field, do not merge them or assume they are the same person.
+- The FIRST name listed in a judges panel is very often the "رئيسا" even if
+  the role word itself is OCR-corrupted or missing - use position in the
+  list as a secondary clue when the role word is unreadable, but never
+  invent a role that has zero textual support.
+
 The role label can appear BEFORE or AFTER the name, on the same line or a
 separate line. Examples of valid patterns:
   Pattern A (label then name, next line):
@@ -290,9 +310,8 @@ separate line. Examples of valid patterns:
   Pattern B (name then label, same line):
     "السيد(ة) ادريس    رئيسا ومقررا"
     "السيد(ة) إلهام    مستشارا"
-  Pattern C (list of names, first is implicitly "رئيسا" / president even if
-  the role word is OCR-corrupted, others explicitly marked "عضوا"):
-    "متكونة من السادة: فلان [رئيسا-corrompu]. علان [اسم آخر] عضوا"
+  Pattern C (separate رئيس and مقرر):
+    "السيد فلان رئيسا . السيد علان مقررا . السيدة فلانة عضوا"
 
 CRITICAL - do not deduplicate similar-looking names: family names are
 sometimes redacted for privacy, so two DIFFERENT judges can appear with the
@@ -309,8 +328,8 @@ A normal tribunal/appeal panel usually has 1-2. Extract ALL assessor names,
 in exact order, however many there are.
 
 Roles to identify:
-- "president_rapporteur": marked by "رئيسا" or "رئيسا ومقررا" (often the
-  FIRST person named, even if the role word is OCR-corrupted)
+- "president": the presiding judge, marked by "رئيسا" (alone or in "رئيسا ومقررا")
+- "rapporteur": the reporting judge, marked by "مقررا" (alone or in "رئيسا ومقررا")
 - "assesseurs": list of judges marked by "عضوا", "أعضاء", "مستشارا"/"مستشار"
 - "greffier": the court CLERK ("كاتب الضبط" / "كاتبة الضبط"), often
   introduced by "بحضور" or "بمساعدة" together with the "المفوض الملكي" -
@@ -328,7 +347,8 @@ Excerpt:
 
 Respond ONLY with this JSON, with clean corrected Arabic text (no OCR artifacts):
 {{
-  "president_rapporteur": "",
+  "president": "",
+  "rapporteur": "",
   "assesseurs": [],
   "greffier": "",
   "procureur": ""
@@ -353,7 +373,8 @@ Respond ONLY with this JSON, with clean corrected Arabic text (no OCR artifacts)
         return nettoyer_champs_haia(resultat)
     except Exception as e:
         return {
-            "president_rapporteur": f"ERREUR: {e}",
+            "president": f"ERREUR: {e}",
+            "rapporteur": "",
             "assesseurs": [],
             "greffier": "",
             "procureur": "",
@@ -475,8 +496,8 @@ no leading dangling fragments):
 
 
 # ---------------------------------------------------------------------------
-# PARTIE 5 : Indemnisation - calcul déterministe du montant réclamé (Python),
-#            LLM uniquement pour interpréter le montant réellement accordé
+# PARTIE 5 : Indemnisation - calcul deterministe du montant reclame (Python)
+#            + indice regex pour le montant accorde + LLM pour le contexte
 # ---------------------------------------------------------------------------
 
 def parser_montant(chaine: str):
@@ -505,17 +526,11 @@ def isoler_section_faits(texte: str) -> str:
 
 
 def isoler_zone_reclamation(texte: str) -> str:
-    """Retourne la zone de texte a utiliser pour compter les montants
-    reclames. De preference, on se limite a la reformulation de la demande
-    situee juste apres 'وبعد المداولة طبقا للقانون' (juste avant le
-    raisonnement du tribunal sur la competence/recevabilite) : c'est la
-    liste la plus fiable et la plus complete, contrairement a la premiere
-    liste dans les faits qui peut se faire couper par les fenetres de texte.
-
-    On cherche la DERNIERE occurrence de 'المداولة' avant le dispositif
-    final, car la PREMIERE occurrence correspond generalement a une phrase
-    differente plus tot dans le texte ('ووضع القضية في المداولة' lors de
-    l'audience), pas a la reformulation de la demande qu'on veut cibler."""
+    """Restreint le comptage des montants reclames a la reformulation de la
+    demande situee juste apres 'وبعد المداولة طبقا للقانون' (la DERNIERE
+    occurrence de 'المداولة' avant le dispositif - la premiere occurrence
+    correspond generalement a la mise en delibere a l'audience, pas a la
+    reformulation qu'on veut cibler)."""
     section_faits = isoler_section_faits(texte)
     idx = section_faits.rfind("المداولة")
     if idx != -1:
@@ -523,28 +538,24 @@ def isoler_zone_reclamation(texte: str) -> str:
     return section_faits
 
 
+MOTIF_MONTANT = r"([\d]+(?:[.,][\d]+)*)\s*در[هم]{1,2}"
+
+
 def trouver_montants_individuels(texte: str):
-    """Trouve TOUS les montants suivis de 'درهم' dans la zone de reclamation
-    (de preference apres 'وبعد المداولة', voir isoler_zone_reclamation).
+    """Trouve TOUS les montants suivis de 'درهم' (ou variante OCR 'درمم')
+    dans la zone de reclamation (voir isoler_zone_reclamation).
 
     Le regex capture toute la sequence de chiffres/points/virgules qui
-    precede 'درهم', sans limite de taille sur le premier groupe (sinon un
+    precede le mot, sans limite de taille sur le premier groupe (sinon un
     montant sans separateur de milliers, ex: '5500 درهم', est tronque)."""
 
-    section_faits = isoler_zone_reclamation(texte)
-
-    # "درهم" (dirham) est parfois mal reconnu par l'OCR - ex: "درمم" au lieu
-    # de "درهم" (le "ه" confondu avec un "م"). On tolere cette variation en
-    # acceptant 1 ou 2 caracteres parmi [هم] apres "در", plutot que d'exiger
-    # une correspondance exacte du mot complet.
-    motif = r"([\d]+(?:[.,][\d]+)*)\s*در[هم]{1,2}"
+    zone = isoler_zone_reclamation(texte)
     montants = []
 
-    for match in re.finditer(motif, section_faits):
+    for match in re.finditer(MOTIF_MONTANT, zone):
         debut_contexte = max(0, match.start() - 25)
-        contexte_avant = section_faits[debut_contexte:match.start()]
+        contexte_avant = zone[debut_contexte:match.start()]
 
-        # Exclut le montant si c'est celui de la ligne de total explicite
         if "مجموع" in contexte_avant:
             continue
 
@@ -556,14 +567,9 @@ def trouver_montants_individuels(texte: str):
 
 
 def dedupliquer_montants(montants: list) -> list:
-    """Les jugements marocains reformulent souvent la meme demande deux fois:
-    une fois dans les faits ('بناء على المقال الافتتاحي'), une fois dans le
-    paragraphe 'وبعد المداولة ... عين بهدف الطلب' juste avant que le tribunal
-    ne traite une question de forme (competence, recevabilite, etc). Si la
-    liste de montants trouves se scinde en deux moities strictement
-    identiques (memes valeurs, meme ordre), c'est cette repetition - on ne
-    garde que la premiere moitie pour ne pas compter chaque montant deux
-    fois dans le total."""
+    """Filet de securite : si la liste se scinde en deux moities strictement
+    identiques (repetition integrale de la demande), on ne garde que la
+    premiere moitie."""
     n = len(montants)
     if n % 2 == 0 and n > 0:
         moitie = n // 2
@@ -580,10 +586,6 @@ def formater_montant(valeur: float) -> str:
 
 
 def calculer_montant_reclame(texte: str) -> dict:
-    """Calcule le montant total réclamé en additionnant chaque montant
-    individuel trouvé dans la section des faits (calcul Python déterministe,
-    jamais confié au LLM), après avoir retiré une éventuelle répétition
-    intégrale de la liste (voir dedupliquer_montants)."""
     montants_bruts = trouver_montants_individuels(texte)
     montants = dedupliquer_montants(montants_bruts)
 
@@ -597,13 +599,34 @@ def calculer_montant_reclame(texte: str) -> dict:
     }
 
 
-def extraire_indemnisation(texte: str) -> dict:
-    """Combine le calcul déterministe du montant réclamé (Python) avec
-    l'analyse contextuelle du LLM pour déterminer ce que le tribunal a
-    réellement accordé."""
+def trouver_montant_accorde_regex(fenetre_mantouk: str):
+    """Cherche un montant EXPLICITEMENT accorde dans le dispositif lui-meme,
+    ex: 'الحكم ... بأداء ... مبلغ 20.000,00 درهم' ou 'بأدائها ... مبلغ ...
+    درهم'. Best-effort seulement (formulation tres variable d'un jugement a
+    l'autre) - sert d'indice pour le LLM, jamais une verite absolue, car le
+    dispositif peut aussi mentionner d'autres montants sans rapport (frais
+    de justice, astreintes, etc)."""
+    motif = r"(?:مبلغ|بأداء|بأدائها|بادائها|بادانها|بادانه)\D{0,40}?([\d]+(?:[.,][\d]+)*)\s*در[هم]{1,2}"
+    matchs = re.findall(motif, fenetre_mantouk)
+    return matchs[0] if matchs else None
 
+
+def extraire_indemnisation(texte: str) -> dict:
     calcul = calculer_montant_reclame(texte)
     fenetre_mantouk = isoler_zone_mantouk(texte)
+    indice_accorde_regex = trouver_montant_accorde_regex(fenetre_mantouk)
+
+    indice_texte = (
+        f"A candidate awarded amount was detected automatically by pattern "
+        f"matching near words like 'مبلغ'/'بأداء' in the ruling: "
+        f"{indice_accorde_regex} dirhams. This is a BEST-EFFORT hint only - "
+        f"verify it actually corresponds to an amount the court AWARDS (not "
+        f"a court fee, a procedural amount, or an unrelated figure) before "
+        f"using it. Correct it if wrong."
+        if indice_accorde_regex else
+        "No candidate awarded amount was detected automatically - determine "
+        "yourself from the ruling excerpt below whether one is present."
+    )
 
     prompt = f"""You are an expert assistant for Moroccan judicial documents written in Arabic.
 
@@ -612,16 +635,24 @@ automatically by summing each individual amount mentioned in the facts
 section: {calcul['montant_reclame_calcule']}. You do NOT need to recompute
 this - it is provided for your context only.
 
-Your ONLY task here is to determine whether the COURT actually AWARDED any
-amount in its final ruling below, and how much. Moroccan court rulings may:
+Your task is to determine whether the COURT actually AWARDED any amount in
+its final ruling below, and how much. Moroccan court rulings may:
 - Award the full or a partial amount ("الحكم بأداء ... مبلغ ... درهم")
 - REJECT the claim entirely ("رفض الطلب")
 - Decline jurisdiction without ruling on the merits at all
   ("عدم اختصاص المحكمة نوعيا للبت في الطلب" / "عدم الاختصاص")
 - Declare the claim inadmissible ("عدم قبول الطلب")
 
+{indice_texte}
+
 If the court rejected the claim, declared itself incompetent, or did not rule
-on the merits at all, montant_accorde must be "0 - aucun montant accordé" and
+on the merits at all, montant_accorde must be exactly the string
+"0 - aucun montant accordé".
+
+Otherwise, if the court DID award an amount, montant_accorde must be ONLY
+the clean number followed by "درهم" (e.g. "20.000,00 درهم") - never a full
+sentence, never extra words.
+
 "statut" must be EXACTLY one of these short labels (nothing else, no full
 sentence): "juridiction incompétente", "demande rejetée", "montant accordé
 intégralement", "montant accordé partiellement", "demande irrecevable".
@@ -679,7 +710,7 @@ def lire_texte_entree() -> str:
 if __name__ == "__main__":
     texte = lire_texte_entree()
     numero = extraire_numero_dossier(texte)
-    tribunal = extraire_tribunal(texte)
+    tribunaux = extraire_tribunal(texte)
     haia = extraire_haia(texte)
     mantouk = extraire_mantouk(texte)
     indemnisation = extraire_indemnisation(texte)
@@ -688,10 +719,11 @@ if __name__ == "__main__":
     print("  RESULTAT DE L'EXTRACTION")
     print("=" * 60)
     print(f"\nرقم الملف : {numero}")
-    print(f"المحكمة : {tribunal}")
+    print(f"المحكمة (المحاكم المذكورة) : {' / '.join(tribunaux)}")
 
     print(f"\nالهيئة")
-    print(f"   - رئيسا ومقررا : {haia.get('president_rapporteur', '') or '-'}")
+    print(f"   - رئيسا : {haia.get('president', '') or '-'}")
+    print(f"   - مقررا : {haia.get('rapporteur', '') or '-'}")
     assesseurs = haia.get("assesseurs", [])
     if assesseurs:
         for i, nom in enumerate(assesseurs, 1):
