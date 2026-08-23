@@ -23,3 +23,6 @@ doc1_corrige_v2.txt
 # Modeles telecharges
 *.gguf
 *.bin
+
+# Résultats d'extraction contenant de vrais noms/données judiciaires
+llm/resultats/*.md
