@@ -30,37 +30,26 @@ st.set_page_config(
 )
 
 # ---------- Style ----------
-# Toutes les couleurs de texte sont fixees explicitement (ne dependent pas
-# du theme clair/sombre de Streamlit), pour eviter le texte invisible.
 st.markdown("""
 <style>
     .eyebrow {
         font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase;
         color: #C9A24B; font-weight: 600; margin-bottom: 4px;
     }
-    .titre-principal { color: #1F3864 !important; margin-bottom: 0; }
+    .titre-principal { color: #1F3864; margin-bottom: 0; }
     .sous-titre { color: #6B6B6B; font-size: 14px; margin-top: 4px; }
     .champ-label {
         font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;
-        color: #9A9890; margin-bottom: 6px; margin-top: 18px;
-    }
-    .boite {
-        background: #FAFAF7; border: 1px solid #E3E1D9; border-radius: 8px;
-        padding: 14px 18px;
-    }
-    .boite, .boite * {
-        color: #262626 !important;
+        color: #6B6B6B; margin-bottom: 6px; margin-top: 18px;
     }
     .arabe {
         direction: rtl; text-align: right; font-size: 17px; line-height: 2;
+        background: #FAFAF7; border: 1px solid #E3E1D9; border-radius: 8px;
+        padding: 14px 18px;
     }
     .numero-dossier {
         direction: rtl; text-align: right; font-size: 24px; font-weight: 700;
-        color: #2E5395 !important;
-    }
-    .tribunal {
-        direction: rtl; text-align: right; font-size: 18px; font-weight: 600;
-        color: #1F3864 !important;
+        color: #1F3864;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -91,14 +80,9 @@ if fichier is not None:
 
             st.success(f"Analyse terminée en {duree}s")
 
-            # --- Numero de dossier + tribunal ---
-            col1, col2 = st.columns(2)
-            with col1:
-                st.markdown('<div class="champ-label">رقم الملف — Numéro de dossier</div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="numero-dossier">{resultat.get("numero_dossier", "—")}</div>', unsafe_allow_html=True)
-            with col2:
-                st.markdown('<div class="champ-label">المحكمة — Tribunal</div>', unsafe_allow_html=True)
-                st.markdown(f'<div class="tribunal">{resultat.get("tribunal", "—")}</div>', unsafe_allow_html=True)
+            # --- Numero de dossier ---
+            st.markdown('<div class="champ-label">رقم الملف — Numéro de dossier</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="numero-dossier">{resultat["numero_dossier"]}</div>', unsafe_allow_html=True)
 
             # --- Haia ---
             st.markdown('<div class="champ-label">الهيئة — Composition du collège de juges</div>', unsafe_allow_html=True)
@@ -108,11 +92,11 @@ if fichier is not None:
                 lignes_haia.append(f"<strong>عضو ({i}) :</strong> {nom}")
             lignes_haia.append(f"<strong>كاتب الضبط :</strong> {haia.get('greffier') or '—'}")
             lignes_haia.append(f"<strong>المحامي العام :</strong> {haia.get('procureur') or '—'}")
-            st.markdown(f'<div class="boite arabe">{"<br>".join(lignes_haia)}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="arabe">{"<br>".join(lignes_haia)}</div>', unsafe_allow_html=True)
 
             # --- Mantouk ---
             st.markdown('<div class="champ-label">المنطوق — Dispositif final</div>', unsafe_allow_html=True)
-            st.markdown(f'<div class="boite arabe">{resultat.get("mantouk", "—")}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="arabe">{resultat["mantouk"]}</div>', unsafe_allow_html=True)
 
             with st.expander("Voir les données brutes (JSON)"):
                 st.json(resultat)
