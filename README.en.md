@@ -1,6 +1,6 @@
 # Extraction Juridique PFA
 
-🇫🇷 [Lire en français](README_FR.md)
+🇫🇷 [Lire en français](README.md)
 
 Automatic extraction of legal information (case number, judgment panel composition, ruling, compensation amounts) from Moroccan judicial decisions written in Arabic — combining OCR and a locally-run LLM, built during a final-year internship (PFA) at the Directorate of Information Systems Modernization, Ministry of Justice (Morocco).
 
