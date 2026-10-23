@@ -1,93 +1,113 @@
-# Notes techniques — Extraction du numéro de dossier (LLM)
 
-## Objectif
+# Technical Notes — Case Number Extraction (LLM)
 
-Extraire automatiquement le numéro de dossier (رقم الملف) à partir du texte OCR
-brut d'une décision de justice marocaine en arabe, quel que soit le tribunal ou
-le type de document (jugement de 1ère instance, arrêt d'appel, arrêt de Cassation).
+## Objective
 
-## Approche finale retenue
+Automatically extract the case number (رقم الملف) from the raw OCR text of a Moroccan judicial decision written in Arabic, regardless of the court or document type (first-instance judgment, appeal ruling, or Court of Cassation decision).
 
-Texte OCR → regex (détection de candidats plausibles) → premier candidat = réponse.
+## Final Approach
 
-Le LLM (Qwen2.5:7b via Ollama) n'est utilisé qu'en tout dernier recours, si la
-regex ne détecte aucun candidat. Il n'est plus utilisé pour choisir entre
-plusieurs candidats — voir la section "Pourquoi" ci-dessous.
+OCR text → regex (detect plausible candidates) → first valid candidate = result.
 
-## Règles de la regex
+The LLM (Qwen2.5:7B via Ollama) is used only as a last resort when the regex fails to detect any candidate.
 
-- Motif : `(?:19|20)\d{2}(?:/\d{1,6}){1,3}` — doit commencer par un vrai
-  millésime (19xx ou 20xx).
-- Exclusion des dates (format AAAA/mois/jour où mois ≤ 12 et jour ≤ 31).
-- Le premier candidat valide trouvé, dans l'ordre d'apparition du texte, est
-  retenu comme numéro de dossier.
+It is no longer used to choose between multiple candidates. See the "Challenges Encountered" section below.
 
-## Pièges rencontrés et résolus (par ordre chronologique de découverte)
+## Regular Expression Rules
 
-1. **Numéro de jugement/arrêt vs numéro de dossier**
-   Ex : "رقم 3762" (numéro du jugement) vs "في الملف رقم 2017/8218/11122"
-   (numéro de dossier). Solution : la regex ne matche que les motifs avec
-   au moins un `/`, ce qui exclut le numéro de jugement (souvent un nombre seul).
+- **Pattern:** `(?:19|20)\d{2}(?:/\d{1,6}){1,3}` — must begin with a valid year prefix (19xx or 20xx).
+- **Date exclusion:** Reject date-like patterns in YYYY/month/day format when the month ≤ 12 and the day ≤ 31.
+- **Selection:** The first valid candidate found, in order of appearance in the text, is selected as the case number.
 
-2. **Numéro de dossier d'une affaire référencée (citée) dans le texte**
-   Cas d'un arrêt de Cassation citant une affaire antérieure : le texte
-   mentionne un premier numéro dans l'en-tête (le bon), puis un second numéro
-   plus loin dans les faits, en référence à un jugement antérieur cité
-   ("الملف المدني عدد ..."). Le second numéro est souvent MIEUX écrit
-   (moins d'erreurs OCR) que le premier, ce qui attire le LLM vers la
-   mauvaise réponse.
-   → Tenté : prompt engineering (règles explicites, few-shot avec exemple
-     concret). Résultat : fonctionne parfois, mais pas de façon fiable à 100%.
-   → Solution finale : ne plus laisser le LLM choisir. Le premier candidat
-     dans l'ordre d'apparition du texte est toujours le bon, de façon
-     déterministe.
+## Challenges Encountered and Resolved
 
-3. **Confusion avec une date au même format**
-   Ex : "المؤرخ في : 2015/2/26" (une date) matche la même regex qu'un vrai
-   numéro de dossier ("عدد : 2012/6/1/4002"), et apparaît AVANT lui dans le
-   texte — ce qui cassait la règle "premier candidat" si les dates n'étaient
-   pas filtrées.
-   → Solution : fonction `ressemble_a_une_date()` qui exclut tout motif où
-     les 2e et 3e segments ressemblent à un mois (≤12) et un jour (≤31) valides.
+Listed in chronological order of discovery.
 
-4. **Confusion avec un numéro de loi**
-   Ex : "القانون رقم 15/02" (référence à une loi) matche un format proche
-   d'un numéro de dossier, mais commence par un petit nombre (15), pas une
-   année.
-   → Solution : la regex exige un préfixe 19xx ou 20xx (vrai millésime).
+### 1. Judgment Number vs. Case Number
 
-5. **Hallucination du LLM**
-   Sur un cas, le LLM a renvoyé un numéro (`490/21`) qui n'apparaissait NULLE
-   PART dans le texte source.
-   → Solution : filet de sécurité (si le LLM est utilisé) vérifiant que sa
-     réponse fait bien partie des candidats détectés, sinon rejet automatique.
-     Dans la version finale, ce risque est éliminé puisque le LLM n'est plus
-     sollicité pour ce choix.
+Example:
 
-## Résultats par moteur OCR
+- `رقم 3762` — judgment number
+- `في الملف رقم 2017/8218/11122` — case number
 
-Le script `extraire_numero_dossier()` a été testé sur les mêmes 10 documents,
-avec le texte OCR produit par différents moteurs (partie de Ghizlane) :
+**Solution:** The regex only matches patterns containing at least one `/`, excluding judgment numbers that typically consist of a single integer.
 
-- **Tesseract** : 10/10 numéros de dossier corrects.
-- **EasyOCR** : 10/10 numéros de dossier corrects.
-- **PaddleOCR** : à venir.
+### 2. Case Numbers from Referenced Proceedings
 
-Fait notable : sur le document 4, le texte brut produit par Tesseract et celui
-produit par EasyOCR différaient (erreur de lecture OCR différente selon le
-moteur sur ce document précis), mais dans les deux cas le script a quand même
-réussi à extraire le bon numéro de dossier. Cela suggère que la règle
-"premier candidat valide" reste robuste même face à des variations de qualité
-OCR d'un moteur à l'autre, tant que les chiffres du numéro de dossier lui-même
-restent lisibles.
+In a Court of Cassation decision referencing an earlier case, the document may contain:
 
-### Comment régénérer un fichier de résultats pour un nouveau moteur OCR
+- The correct case number in the header.
+- Another case number later in the document, referring to a previous judgment (`الملف المدني عدد ...`).
+
+The second number is often better recognized by OCR, making it more attractive to the LLM even though it is not the correct answer.
+
+**Approaches tested:**
+
+- Explicit prompt instructions.
+- Additional selection rules.
+- Few-shot prompting with concrete examples.
+
+**Result:** These approaches sometimes worked but did not consistently achieve full accuracy.
+
+**Final solution:** Stop allowing the LLM to choose between candidates. Instead, select the first valid candidate in the order it appears in the text using deterministic Python logic.
+
+### 3. Confusion with Dates
+
+Example:
+
+`المؤرخ في : 2015/2/26`
+
+This date matches the same general pattern as a genuine case number such as:
+
+`عدد : 2012/6/1/4002`
+
+If the date appears before the actual case number, it breaks the "first candidate" rule.
+
+**Solution:** Implemented the `ressemble_a_une_date()` function to exclude patterns whose second and third segments represent a valid month (≤ 12) and day (≤ 31).
+
+### 4. Confusion with Legal References
+
+Example:
+
+`القانون رقم 15/02`
+
+This legal reference resembles a case-number format but starts with a small number rather than a year.
+
+**Solution:** Require all candidates to begin with a valid year prefix (19xx or 20xx).
+
+### 5. LLM Hallucinations
+
+In one test, the LLM returned the identifier `490/21`, which did not appear anywhere in the source text.
+
+**Solution:** Implemented a validation safeguard that checks whether the LLM's response belongs to the set of detected candidates.
+
+If not, the response is automatically rejected.
+
+In the final implementation, this particular selection risk is avoided by no longer relying on the LLM to choose between candidates.
+
+## Results by OCR Engine
+
+The `extraire_numero_dossier()` function was evaluated using the same 10 judicial documents, with OCR text generated by different engines (OCR component developed by Ghizlane).
+
+- **Tesseract:** 10/10 correct case numbers.
+- **EasyOCR:** 10/10 correct case numbers.
+- **PaddleOCR:** Pending evaluation in these technical notes.
+
+**Notable observation:**
+
+For document 4, Tesseract and EasyOCR produced different raw-text outputs because of OCR recognition differences.
+
+Despite these variations, the extraction script successfully identified the correct case number in both cases.
+
+This suggests that selecting the first valid candidate can remain robust to certain OCR errors, provided the digits in the case number itself remain readable.
+
+### Regenerating Results for a New OCR Engine
 
 ```bash
 {
-  echo "# Résultats extraction numéro de dossier — OCR X"
+  echo "# Case Number Extraction Results — OCR X"
   echo ""
-  echo "| Document | Numéro de dossier extrait |"
+  echo "| Document | Extracted Case Number |"
   echo "|---|---|"
   for f in data/ocr_output/DOSSIER_DU_MOTEUR/*.txt; do
     nom=$(basename "$f")
@@ -97,153 +117,264 @@ restent lisibles.
 } > llm/resultats/resultats_X.md
 ```
 
-Fichiers déjà générés : `llm/resultats/resultats_tesseract.md`,
-`llm/resultats/resultats_easyocr.md`. À venir : `resultats_paddleocr.md`.
+Already generated:
 
-## Limites connues / points de vigilance pour la suite
+- `llm/resultats/resultats_tesseract.md`
+- `llm/resultats/resultats_easyocr.md`
 
-- La règle "premier candidat = le bon" a été validée empiriquement sur les
-  documents testés, mais n'est pas garantie à 100% sur tout type de document
-  marocain (à surveiller si de nouveaux formats apparaissent en Phase 3).
-- Si l'OCR se trompe sur un CHIFFRE (pas juste sur le texte arabe autour),
-  la regex peut ne pas détecter le bon candidat du tout. Ce risque est plus
-  élevé si un moteur OCR est nettement moins précis sur les chiffres que
-  Tesseract et EasyOCR ne l'ont été sur notre corpus de test.
+Pending in these notes:
 
-### Résultat observé (Tesseract vs EasyOCR)
+- `llm/resultats/resultats_paddleocr.md`
 
-- **Tesseract** : 10/10 numéros de dossier corrects.
-- **EasyOCR** : 10/10 numéros de dossier corrects également.
-- Fait notable : sur le document 4, le texte brut produit par Tesseract et
-  celui produit par EasyOCR différaient (erreur de lecture OCR différente
-  selon le moteur sur ce document précis), mais dans les deux cas le script
-  a quand même réussi à extraire le bon numéro de dossier. Cela suggère que
-  la règle "premier candidat valide" reste robuste même face à des
-  variations de qualité OCR d'un moteur à l'autre, tant que les chiffres du
-  numéro de dossier lui-même restent lisibles.
+## Known Limitations and Considerations
 
-## Extraction الهيئة (bench) et المنطوق (dispositif) - Phase 3
+- The "first valid candidate" rule was empirically validated on the test documents, but it is not guaranteed to work on every Moroccan judicial document format.
+- New document layouts may require additional validation rules.
+- If OCR incorrectly recognizes a digit within the case number itself, the regex may fail to identify the correct candidate.
+- This risk is greater when using OCR engines that recognize numerical characters less accurately.
 
-### Approche
+### Observed Results — Tesseract vs. EasyOCR
 
-Comme pour le numéro de dossier, on isole d'abord une fenêtre de texte pertinente
-en Python (recherche d'ancres textuelles comme "الهيئة الحاكمة" ou "مؤلفة من
-السادة") avant de la donner au LLM, plutôt que de donner tout le document. Ça
-évite que le LLM confonde les juges du panel avec d'autres noms cités ailleurs
-(avocats, parties, juges d'affaires antérieures).
+- **Tesseract:** 10/10 correct case numbers.
+- **EasyOCR:** 10/10 correct case numbers.
 
-### Découvertes importantes
+For document 4, the OCR outputs differed, but the extraction script still identified the correct case number in both cases.
 
-- La position de la composition du collège varie selon le type de juridiction :
-  en en-tête pour un tribunal/cour d'appel, en FIN de document pour un arrêt de
-  Cassation (après le dispositif final).
-- Un panel de Cassation "بغرفتين" (deux chambres réunies) peut compter 6+ juges
-  assesseurs, contre 1-2 pour un tribunal normal. Le schéma d'extraction utilise
-  donc une liste de taille variable (`assesseurs: []`), pas des champs fixes.
-- Le greffier n'est pas toujours annoncé par le mot-clé exact "كاتب الضبط" - il
-  peut être introduit simplement par "بمساعدة" (assisté de), qu'il faut aussi
-  détecter.
+This supports the robustness of the "first valid candidate" approach against certain OCR variations, provided the relevant numerical sequence remains intact.
 
-### Limite connue : noms fusionnés par perte de ponctuation OCR
+---
 
-Quand la liste des juges est dense (formation à 6+ membres), l'OCR (EasyOCR
-testé ici) perd parfois la ponctuation de séparation entre deux noms consécutifs
-(tiret ou virgule manquant). Le LLM reçoit alors deux noms accolés sans aucun
-séparateur visible et ne peut pas deviner où couper - ce n'est pas récupérable
-par prompt engineering, c'est une perte d'information en amont (qualité OCR).
+# Judgment Panel (الهيئة) and Final Ruling (المنطوق) Extraction — Phase 3
 
-### Limite connue : correction orthographique partielle
+## Approach
 
-Sur des mots très abîmés par l'OCR (ex: "بمسا اعدة" au lieu de "بمساعدة", "ىيدة"
-au lieu de "السيدة"), le LLM (Qwen2.5:7b) parvient à repérer correctement le bon
-passage et la bonne personne, mais ne corrige pas toujours l'orthographe du nom
-lui-même dans sa sortie. La localisation de l'information prime sur la
-correction esthétique du texte, qui reste imparfaite avec un modèle de cette
-taille sur du bruit OCR sévère.
+As with case-number extraction, the system first isolates a relevant text window using Python.
 
-## Bilan final Phase 3 (الهيئة + المنطوق) - EasyOCR
+This involves identifying textual anchors such as:
 
-Après plusieurs itérations de correction (ancres multiples pour الهيئة selon
-le type de juridiction, distinction label-de-rôle vs vrai nom avec garde-fou
-Python, verbes de décision spécifiques pour éviter la confusion avec la
-demande d'une partie, instruction "ne rien omettre" pour éviter que le LLM
-ne saute le verbe de décision + nom du tribunal en croyant "nettoyer" une
-clause procédurale) :
+- `الهيئة الحاكمة`
+- `مؤلفة من السادة`
 
-- **رقم الملف** : fiable à 100% (règle déterministe).
-- **الهيئة** : extraction correcte sur tous les documents testés ; les champs
-  vides correspondent à une absence réelle de l'information dans le texte
-  source (ex: extraits de recueils de jurisprudence qui omettent parfois
-  cette section), pas à des erreurs d'extraction.
-- **المنطوق** : le bon passage est systématiquement repéré et complet (plus
-  de troncature ni d'omission du verbe de décision). Reste une limite
-  mineure : quelques fautes d'orthographe résiduelles sur des mots très
-  abîmés par l'OCR, qui ne remettent pas en cause le sens ni la complétude
-  du dispositif extrait.
+The selected text is then passed to the LLM instead of sending the entire document.
 
-Difficultés clés résolues durant cette phase :
-1. Confusion entre "لهذه الأسباب" introduisant la demande d'une partie et
-   celui introduisant la vraie décision du tribunal -> recherche de verbes
-   de décision spécifiques au tribunal (حكمت/قضت/تصرح/قررت + nom de la cour).
-2. Le LLM recopiait parfois le label de rôle (ex: "رئيسا ومقررا") comme si
-   c'était le nom de la personne, quand le nom était sur la ligne suivante ->
-   garde-fou Python qui détecte et vide ces faux positifs après l'appel LLM.
-3. Instruction trop nuancée sur "ignorer la clause procédurale" a conduit le
-   LLM à sauter le verbe de décision et le nom du tribunal par excès de zèle
-   -> remplacée par une instruction stricte "tout garder, rien omettre".
+This reduces the risk of confusing judgment-panel members with other people mentioned elsewhere, such as lawyers, parties, or judges from previous proceedings.
 
-## Module complémentaire : correction orthographique du texte complet (corriger_texte.py)
+## Important Findings
 
-En complément des 4 champs extraits (numéro de dossier, tribunal, هيئة,
-منطوق), un module séparé a été développé pour corriger l'orthographe de
-l'ensemble d'un texte OCR, utile pour une relecture humaine du document
-complet plutôt que des champs isolés.
+### 1. Variable Position of Judgment Panel Information
 
-### Approche
+The location of judgment-panel information depends on the court:
 
-Le texte est découpé en morceaux (~2500 caractères, coupés aux sauts de
-ligne/espaces pour ne pas trancher un mot), chaque morceau étant corrigé
-séparément par le LLM avant réassemblage.
+- **First-instance courts and courts of appeal:** Usually near the beginning of the document.
+- **Court of Cassation:** Sometimes at the end of the document, after the final ruling.
 
-### Problème identifié lors des premiers tests
+The extraction logic therefore searches multiple possible locations.
 
-Sur du texte fortement abîmé par l'OCR, le modèle ne se contentait pas de
-corriger les fautes : il **inventait** parfois du contenu plausible mais faux
-pour "faire fonctionner" la phrase. Trois cas concrets observés :
-1. Une référence vague ("à la date mentionnée ci-dessus") remplacée par une
-   date précise mais fausse, recopiée d'un tout autre contexte du document.
-2. Un mot arabe inventé (qui n'existe pas dans la langue) créé pour combler
-   un artefact de tampon au lieu de simplement le retirer.
-3. Deux noms d'institutions réelles et distinctes fusionnées en une entité
-   fictive qui n'existe pas.
+### 2. Variable Number of Judges
 
-### Corrections apportées
+A Court of Cassation panel described as `بغرفتين` (two chambers sitting together) may include six or more associate judges.
 
-1. **Prompt renforcé** avec 5 règles strictes, chacune illustrée par un
-   contre-exemple réel tiré des échecs observés (plus efficace qu'une règle
-   abstraite, comme constaté sur d'autres parties du projet).
-2. **Garde-fou automatique** : toute séquence numérique (3 chiffres ou plus)
-   apparaissant dans le texte corrigé mais absente de l'intégralité du
-   document original est détectée ; le morceau concerné est alors rejeté et
-   la version originale (non corrigée) est conservée à la place.
+A typical first-instance panel may contain only one or two.
 
-### Résultat après correction
+**Solution:** Use a variable-length list:
 
-Sur le même document de test, le garde-fou a détecté et neutralisé le
-problème de date inventée : le morceau concerné a été automatiquement rejeté
-et remplacé par sa version d'origine, ce qui a éliminé par la même occasion
-la fusion d'institutions fictive (présente dans le même morceau).
+`assesseurs: []`
 
-Le mot arabe inventé (cas n°2), présent dans un autre morceau sans nombre
-suspect, n'a en revanche pas été intercepté : aucun garde-fou mécanique
-équivalent n'existe pour détecter un mot inventé isolé (contrairement à un
-nombre absent du document, un mot arabe fabriqué n'est pas trivialement
-détectable sans un dictionnaire de référence).
+This replaces fixed fields such as `assesseur_1`, `assesseur_2`, and so on.
 
-### Limite connue
+### 3. Different Clerk Identification Patterns
 
-Ce module reste donc utile pour une relecture rapide et pour corriger le
-bruit OCR léger à modéré, mais ne doit pas être considéré comme une source
-de vérité fiable à 100% sur des passages très abîmés, en particulier pour
-les noms propres, institutions et références numériques - une vérification
-humaine reste recommandée sur les passages sensibles.
+The court clerk is not always introduced using the exact expression:
+
+`كاتب الضبط`
+
+Other expressions may appear, including:
+
+`بمساعدة`
+
+Meaning "assisted by."
+
+The extraction logic must account for these alternative expressions.
+
+## Known Limitation — Merged Names Due to OCR Punctuation Loss
+
+When a judgment panel contains six or more members, OCR may fail to recognize punctuation separating consecutive names.
+
+For example, a missing comma or hyphen can cause two names to appear as a single uninterrupted sequence.
+
+The LLM then receives two names without any visible separator and may be unable to determine where one name ends and the other begins.
+
+This problem cannot always be solved through prompt engineering because the relevant information was already lost during OCR.
+
+## Known Limitation — Partial Spelling Correction
+
+For heavily corrupted OCR text, such as:
+
+- `بمسا اعدة` instead of `بمساعدة`
+- `ىيدة` instead of `السيدة`
+
+Qwen2.5:7B can sometimes correctly identify the relevant passage and person but may fail to reconstruct the exact spelling.
+
+In these cases, correctly locating the information takes priority over producing perfectly corrected text.
+
+Severely degraded OCR remains a limitation for a model of this size.
+
+## Final Phase 3 Results — EasyOCR
+
+After several iterations, the extraction logic was improved through:
+
+- Multiple textual anchors for judgment-panel extraction.
+- Different search strategies depending on the court type.
+- Python safeguards distinguishing role labels from actual names.
+- Court-specific decision verbs to identify the actual ruling.
+- Strict instructions preventing the LLM from omitting relevant text.
+
+### Results
+
+**Case Number — رقم الملف**
+
+All case numbers were correctly extracted from the evaluated documents using deterministic rules.
+
+**Judgment Panel — الهيئة**
+
+Correct extraction was achieved on all tested documents.
+
+Empty fields corresponded to information genuinely absent from the source text, such as excerpts from legal precedent collections that omit panel composition.
+
+**Final Ruling — المنطوق**
+
+The correct passage was consistently identified and extracted completely.
+
+Previous truncation problems and omissions of decision verbs were resolved.
+
+Minor spelling errors remained in some words severely corrupted by OCR, but these did not affect the overall meaning or completeness of the extracted ruling.
+
+## Key Challenges Resolved During Phase 3
+
+### 1. Confusion Between a Party's Request and the Court's Decision
+
+The expression `لهذه الأسباب` may introduce either:
+
+- A request made by one of the parties.
+- The court's actual decision.
+
+**Solution:** Search for court-specific decision verbs such as:
+
+- `حكمت`
+- `قضت`
+- `تصرح`
+- `قررت`
+
+Combined with the court's name.
+
+### 2. Role Labels Mistaken for Personal Names
+
+The LLM sometimes returned a role label such as:
+
+`رئيسا ومقررا`
+
+As though it were a person's name.
+
+This occurred when the actual name appeared on the following line.
+
+**Solution:** Implemented a Python safeguard that detects and removes false positives consisting only of role labels.
+
+### 3. Excessive Text Removal by the LLM
+
+An earlier prompt instructed the LLM to ignore certain procedural clauses.
+
+The instruction was too nuanced, causing the model to omit the decision verb and court name.
+
+**Solution:** Replaced it with a strict rule:
+
+"Keep everything from the actual beginning of the ruling. Do not omit any information."
+
+---
+
+# Additional Module — Full-Text OCR Spelling Correction (`corriger_texte.py`)
+
+In addition to extracting the four main fields (case number, court, judgment panel, and final ruling), a separate module was developed to correct spelling throughout the entire OCR text.
+
+This module is intended to facilitate human review of complete documents rather than extraction of individual fields.
+
+## Approach
+
+The text is divided into chunks of approximately 2,500 characters.
+
+Chunk boundaries are aligned with line breaks or spaces whenever possible to avoid splitting words.
+
+Each chunk is corrected separately by the LLM and then reassembled into the complete document.
+
+## Problem Identified During Initial Tests
+
+When processing heavily corrupted OCR text, the model sometimes went beyond correcting spelling mistakes.
+
+Instead, it invented plausible but incorrect information to make sentences appear coherent.
+
+Three concrete cases were observed.
+
+### 1. Invented Date
+
+A vague reference meaning "on the date mentioned above" was replaced with a specific but incorrect date copied from another part of the document.
+
+### 2. Invented Arabic Word
+
+The LLM generated a nonexistent Arabic word while attempting to reconstruct text affected by a stamp artifact.
+
+### 3. Merged Institutions
+
+Two distinct real institutions were incorrectly merged into one fictional entity.
+
+## Corrections Implemented
+
+### 1. Strengthened Prompt
+
+The prompt was reinforced with five strict rules.
+
+Each rule included a concrete counterexample taken from an observed failure.
+
+This proved more effective than providing only abstract instructions, consistent with findings from other parts of the project.
+
+### 2. Automatic Numerical Validation
+
+A safeguard was added to detect numerical sequences containing three or more digits that appear in the corrected text but not in the original document.
+
+When such a sequence is detected:
+
+1. The corrected chunk is rejected.
+2. The original, uncorrected chunk is preserved.
+3. Processing continues without accepting the suspicious modification.
+
+## Results After Correction
+
+On the same test document, the safeguard detected and neutralized the invented-date problem.
+
+The affected chunk was automatically rejected and replaced with its original version.
+
+This also eliminated the fictional merging of institutions because both errors appeared in the same chunk.
+
+However, the invented Arabic word occurred in another chunk without any suspicious numerical sequence.
+
+It was therefore not detected.
+
+Unlike an invented numerical reference, an isolated fabricated Arabic word is difficult to identify automatically without an appropriate reference dictionary or additional validation mechanism.
+
+## Known Limitations
+
+The spelling-correction module remains useful for:
+
+- Rapid document review.
+- Correcting light to moderate OCR noise.
+- Improving the readability of extracted Arabic text.
+
+However, it should not be treated as a completely reliable source of truth when processing severely corrupted passages.
+
+Particular caution is required for:
+
+- Personal names.
+- Institution names.
+- Numerical references.
+- Sensitive legal information.
+
+**Human verification remains recommended for sensitive or legally significant passages.**
+
